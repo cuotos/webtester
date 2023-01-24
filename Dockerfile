@@ -4,8 +4,11 @@
 #	cuotos/webtester
 #
 
-FROM nginx:alpine
+FROM golang as builder
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -o /webtester .
 
-RUN echo -e "#!/bin/sh\nhostname >/usr/share/nginx/html/index.html\nnginx -g \"daemon off;\"" >>/start.sh && chmod +x /start.sh && touch /usr/share/nginx/html/healthz
-
-CMD ["/start.sh"]
+FROM alpine
+COPY --from=builder /webtester /webtester
+CMD /webtester
