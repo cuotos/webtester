@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: ["main"]
 
 jobs:
   build-and-push:
@@ -10,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: tj-actions/branch-names@v6
+        id: branch-name
+
       - uses: actions/checkout@v3
       
       - uses: docker/setup-buildx-action@v2
@@ -20,7 +25,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: release
-        if: github.ref == 'refs/heads/main'
+        if: steps.branch-name.outputs.is_default == 'true'
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -28,9 +33,9 @@ jobs:
           tags: cuotos/webtester:latest,cuotos/webtester:blue,cuotos/webtester:green
 
       - name: release test
-        if: github.ref != 'refs/heads/main'
+        if: steps.branch-name.outputs.is_default == 'false'
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: cuotos/webtester:test,cuotos/webtester:${{ github.ref }}
+          tags: cuotos/webtester:test,cuotos/webtester:${{ steps.branch-name.outputs.current_branch }}
