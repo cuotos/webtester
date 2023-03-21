@@ -11,6 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -21,23 +24,11 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	r := http.DefaultServeMux
-	r.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
-	})
+	r := chi.NewMux()
+	r.Use(promMiddleware)
 
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-
-		hostname, _ := os.Hostname()
-
-		resp := fmt.Sprintf("%s\n%s", hostname, os.Getenv("TEXT"))
-		w.Write([]byte(resp))
-	})
-
+	r.Handle("/healthz", healthzHandler())
+	r.Handle("/", indexHandler())
 	r.Handle("/metrics", promhttp.Handler())
 
 	srv := &http.Server{
@@ -67,4 +58,37 @@ func main() {
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("server shutdown failed: %s", err)
 	}
+}
+
+func indexHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+
+		hostname, _ := os.Hostname()
+
+		resp := fmt.Sprintf("%s\n%s", hostname, os.Getenv("TEXT"))
+		w.Write([]byte(resp))
+	}
+}
+
+func healthzHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	}
+}
+
+var httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	Name: "webtester_http_duration_seconds",
+	Help: "Duration of HTTP requests.",
+}, []string{"path"})
+
+func promMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		timer := prometheus.NewTimer(httpDuration.WithLabelValues(r.URL.Path))
+		next.ServeHTTP(w, r)
+		timer.ObserveDuration()
+	})
 }
