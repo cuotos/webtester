@@ -17,6 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+var (
+	version string = "unset"
+)
+
 func main() {
 
 	var port = flag.Int("port", 5117, "port to listen on")
@@ -30,6 +34,7 @@ func main() {
 	r.Handle("/healthz", healthzHandler())
 	r.Handle("/", indexHandler())
 	r.Handle("/metrics", promhttp.Handler())
+	r.Handle("/versionz", versionzHandler())
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", *port),
@@ -57,6 +62,12 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("server shutdown failed: %s", err)
+	}
+}
+
+func versionzHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(version))
 	}
 }
 
