@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,17 +19,21 @@ import (
 
 var (
 	version string = "unset"
+	port    int    = 5117
 )
 
 func main() {
 
-	var port = flag.Int("port", 5117, "port to listen on")
-	flag.Parse()
+	value, ok := os.LookupEnv("PORT")
+	if ok {
+		i, _ := strconv.Atoi(value)
+		port = i
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	r := chi.NewMux()
-	r.Use(promMiddleware)
+	r.Use(promMiddleware, headerMiddleware)
 
 	r.Handle("/healthz", healthzHandler())
 	r.Handle("/", indexHandler())
@@ -37,7 +41,7 @@ func main() {
 	r.Handle("/versionz", versionzHandler())
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", *port),
+		Addr:    fmt.Sprintf(":%d", port),
 		Handler: r,
 	}
 
@@ -49,7 +53,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
-	log.Printf("server listening on port: %d", *port)
+	log.Printf("server listening on port: %d", port)
 
 	<-done
 
@@ -101,5 +105,12 @@ func promMiddleware(next http.Handler) http.Handler {
 		timer := prometheus.NewTimer(httpDuration.WithLabelValues(r.URL.Path))
 		next.ServeHTTP(w, r)
 		timer.ObserveDuration()
+	})
+}
+
+func headerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Cuotos-Webtester", "true")
+		next.ServeHTTP(w, r)
 	})
 }
