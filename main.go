@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,9 +32,16 @@ func main() {
 		port = i
 	}
 
+	optionalMiddlewares := []func(http.Handler) http.Handler{}
+
+	if strings.ToUpper(os.Getenv("LOGGING")) != "FALSE" {
+		optionalMiddlewares = append(optionalMiddlewares, middleware.Logger)
+	}
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	r := chi.NewMux()
+	r.Use(optionalMiddlewares...)
 	r.Use(promMiddleware, headerMiddleware)
 
 	r.Handle("/healthz", healthzHandler())
