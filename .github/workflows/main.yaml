@@ -26,16 +26,18 @@ jobs:
 
       - name: release
         if: steps.branch-name.outputs.is_default == 'true'
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: cuotos/webtester:latest,cuotos/webtester:blue,cuotos/webtester:green
 
       - name: release test
         if: steps.branch-name.outputs.is_default == 'false'
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: cuotos/webtester:test,cuotos/webtester:${{ steps.branch-name.outputs.current_branch }}
