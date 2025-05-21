@@ -86,6 +86,8 @@ func versionzHandler() http.HandlerFunc {
 
 func indexHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/plain")
+
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
