@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -24,6 +25,12 @@ var (
 	port    int    = 5117
 )
 
+func init() {
+	info, ok := debug.ReadBuildInfo()
+	if ok {
+		version = info.Main.Version
+	}
+}
 func main() {
 
 	value, ok := os.LookupEnv("PORT")
