@@ -9,12 +9,9 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -39,26 +36,27 @@ func main() {
 		port = i
 	}
 
-	optionalMiddlewares := []func(http.Handler) http.Handler{}
-
-	if strings.ToUpper(os.Getenv("LOGGING")) != "FALSE" {
-		optionalMiddlewares = append(optionalMiddlewares, middleware.Logger)
-	}
-
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	r := chi.NewMux()
-	r.Use(optionalMiddlewares...)
-	r.Use(promMiddleware, headerMiddleware)
+	mux := http.DefaultServeMux
 
-	r.Handle("/healthz", healthzHandler())
-	r.Handle("/", indexHandler())
-	r.Handle("/metrics", promhttp.Handler())
-	r.Handle("/versionz", versionzHandler())
+	mux.Handle("/healthz", healthzHandler())
+	mux.Handle("/", indexHandler())
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/versionz", versionzHandler())
+	mux.Handle("/status/{status_code}", statusHandler())
 
+	handler := &MiddlewareHandler{
+		Handler: mux,
+		Middleware: []func(http.Handler) http.Handler{
+			headerMiddleware,
+			promMiddleware,
+			injectMiddleware,
+		},
+	}
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: r,
+		Handler: handler,
 	}
 
 	done := make(chan os.Signal, 1)
@@ -85,6 +83,22 @@ func main() {
 	}
 }
 
+func statusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		providedStatusCodeString := r.PathValue("status_code")
+
+		providedStatusCode, err := strconv.Atoi(providedStatusCodeString)
+		if err != nil || http.StatusText(providedStatusCode) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(fmt.Sprintf("status code provided is not valid: %s", providedStatusCodeString)))
+			return
+		}
+
+		w.WriteHeader(providedStatusCode)
+		w.Write([]byte(http.StatusText(providedStatusCode)))
+	}
+}
+
 func versionzHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(version))
@@ -94,16 +108,6 @@ func versionzHandler() http.HandlerFunc {
 func indexHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/plain")
-
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-
-		hostname, _ := os.Hostname()
-
-		resp := fmt.Sprintf("%s\n%s", hostname, os.Getenv("TEXT"))
-		w.Write([]byte(resp))
 	}
 }
 
@@ -131,4 +135,36 @@ func headerMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Cuotos-Webtester", "true")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func injectMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cw := &CustomWriter{
+			ResponseWriter: w,
+		}
+		next.ServeHTTP(cw, r)
+
+		hostname, _ := os.Hostname()
+
+		resp := fmt.Sprintf("%s\n%s", hostname, os.Getenv("TEXT"))
+
+		fmt.Fprintf(cw, "\n\n%s", resp)
+	})
+}
+
+type CustomWriter struct {
+	http.ResponseWriter
+}
+
+type MiddlewareHandler struct {
+	Handler    http.Handler
+	Middleware []func(http.Handler) http.Handler
+}
+
+func (m *MiddlewareHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	handler := m.Handler
+	for _, middleware := range m.Middleware {
+		handler = middleware(handler)
+	}
+	handler.ServeHTTP(w, r)
 }
