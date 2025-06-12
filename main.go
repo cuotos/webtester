@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -52,6 +53,7 @@ func main() {
 			headerMiddleware,
 			promMiddleware,
 			injectMiddleware,
+			middleware.Logger,
 		},
 	}
 	srv := &http.Server{

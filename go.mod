@@ -2,7 +2,10 @@ module github.com/cuotos/webtester
 
 go 1.24
 
-require github.com/prometheus/client_golang v1.14.0
+require (
+	github.com/go-chi/chi/v5 v5.2.1
+	github.com/prometheus/client_golang v1.14.0
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
